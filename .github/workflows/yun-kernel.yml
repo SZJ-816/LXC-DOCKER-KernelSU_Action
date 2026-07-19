@@ -269,6 +269,12 @@ jobs:
         
         if [ ${{ env.METHOD_OK }} = A ]; then
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
+            # 强制启用 CONFIG_KSU 和 OVERLAY_FS（crDroid 内核已集成 KSU 源码）
+            ./scripts/config --file out/.config --enable OVERLAY_FS
+            ./scripts/config --file out/.config --enable KSU
+            make CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} olddefconfig
+            # 验证 CONFIG_KSU 是否已启用
+            grep "CONFIG_KSU" out/.config || echo "WARNING: CONFIG_KSU not found in .config!"
             if [ ${{ env.ENABLE_CCACHE }} = true ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
             else
