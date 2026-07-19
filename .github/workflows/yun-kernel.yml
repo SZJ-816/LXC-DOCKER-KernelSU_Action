@@ -248,6 +248,10 @@ jobs:
         if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
             echo "CONFIG_CC_WERROR=n" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         fi
+        # 显式添加 CONFIG_KSU=y（crDroid 内核已集成 KSU 源码，无需 setup.sh）
+        echo "CONFIG_KSU=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        # 确保依赖项已启用
+        echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
 
     - name: 设置ccache缓存
       if: env.ENABLE_CCACHE == 'true'
