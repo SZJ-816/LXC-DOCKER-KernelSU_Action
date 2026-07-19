@@ -1,4 +1,4 @@
-name: build
+﻿name: build
 on:
   watch:
     types: [started]
@@ -252,6 +252,25 @@ jobs:
         echo "CONFIG_KSU=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         # 确保依赖项已启用
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+
+    - name: 修复KSU hook变量缺失
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        # crDroid ksud.c 中 ksu_vfs_read_hook/ksu_execveat_hook/ksu_input_hook
+        # 定义在 #else 块(即非 CONFIG_KPROBES)。当 CONFIG_KPROBES=y 时不定义，
+        # 但 fs/read_write.c 等在 #ifdef CONFIG_KSU 下仍引用，导致链接错误。
+        # 解决: 创建 hook_compat.c 在 CONFIG_KPROBES 时提供变量定义。
+        printf '%s\n' \
+          '#include <linux/types.h>' \
+          '#include <linux/cache.h>' \
+          '#ifdef CONFIG_KPROBES' \
+          'bool ksu_vfs_read_hook __read_mostly = false;' \
+          'bool ksu_execveat_hook __read_mostly = false;' \
+          'bool ksu_input_hook __read_mostly = false;' \
+          '#endif' > drivers/kernelsu/hook_compat.c
+        sed -i '/^kernelsu-objs += kernel_compat.o/a kernelsu-objs += hook_compat.o' drivers/kernelsu/Makefile
+        echo "=== hook_compat.c ===" && cat drivers/kernelsu/hook_compat.c
+        echo "=== Makefile ===" && grep "hook_compat" drivers/kernelsu/Makefile
 
     - name: 设置ccache缓存
       if: env.ENABLE_CCACHE == 'true'
