@@ -304,10 +304,8 @@ jobs:
         sed -i 's/CONFIG_MSM_DEBUGCC_KONA=y/# CONFIG_MSM_DEBUGCC_KONA is not set/' "$DEFCONFIG"
         sed -i 's/CONFIG_NETFILTER_XT_TARGET_TRACE=y/# CONFIG_NETFILTER_XT_TARGET_TRACE is not set/' "$DEFCONFIG"
         
-        echo "=== 4. 内存优化: KSM + 透明大页 + ZRAM回写 ==="
+        echo "=== 4. 内存优化: KSM + ZRAM回写 ==="
         echo "CONFIG_KSM=y" >> "$DEFCONFIG"
-        echo "CONFIG_TRANSPARENT_HUGEPAGE=y" >> "$DEFCONFIG"
-        echo "CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y" >> "$DEFCONFIG"
         echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
         
         echo "=== 5. IO 优化: 启用 deadline 调度器（UFS存储） ==="
