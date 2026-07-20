@@ -62,6 +62,7 @@ jobs:
         echo "DISABLE-LTO=$(cat config.env | grep -w "DISABLE-LTO" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ADD_OVERLAYFS_CONFIG=$(cat config.env | grep -w "ADD_OVERLAYFS_CONFIG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "DISABLE_CC_WERROR=$(cat config.env | grep -w "DISABLE_CC_WERROR" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "ENABLE_PERF_OPT=$(cat config.env | grep -w "ENABLE_PERF_OPT" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ENABLE_CCACHE=$(cat config.env | grep -w "ENABLE_CCACHE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "NEED_DTBO=$(cat config.env | grep -w "NEED_DTBO" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "BUILD_BOOT_IMG=$(cat config.env | grep -w "BUILD_BOOT_IMG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
@@ -271,6 +272,49 @@ jobs:
         sed -i '/^kernelsu-objs += kernel_compat.o/a kernelsu-objs += hook_compat.o' drivers/kernelsu/Makefile
         echo "=== hook_compat.c ===" && cat drivers/kernelsu/hook_compat.c
         echo "=== Makefile ===" && grep "hook_compat" drivers/kernelsu/Makefile
+
+    - name: 性能优化配置
+      if: env.ENABLE_PERF_OPT == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        DEFCONFIG="arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}"
+        
+        echo "=== 1. 启用 ThinLTO 跨模块优化 ==="
+        # 先移除可能存在的 LTO 禁用项
+        sed -i '/CONFIG_LTO_NONE/d' "$DEFCONFIG"
+        sed -i 's/CONFIG_LTO=n/# CONFIG_LTO is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_LTO_CLANG=n/# CONFIG_LTO_CLANG is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_THINLTO=n/# CONFIG_THINLTO is not set/' "$DEFCONFIG"
+        # 启用 ThinLTO
+        echo "CONFIG_LTO=y" >> "$DEFCONFIG"
+        echo "CONFIG_LTO_CLANG=y" >> "$DEFCONFIG"
+        echo "CONFIG_THINLTO=y" >> "$DEFCONFIG"
+        
+        echo "=== 2. 编译器优化: 优先性能而非大小 ==="
+        sed -i 's/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/' "$DEFCONFIG"
+        echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG"
+        
+        echo "=== 3. 关闭调试选项（减少开销和体积） ==="
+        sed -i 's/CONFIG_DEBUG_INFO=y/# CONFIG_DEBUG_INFO is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_DEBUG_LIST=y/# CONFIG_DEBUG_LIST is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_DEBUG_ALIGN_RODATA=y/# CONFIG_DEBUG_ALIGN_RODATA is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_SPMI_MSM_PMIC_ARB_DEBUG=y/# CONFIG_SPMI_MSM_PMIC_ARB_DEBUG is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_VIDEO_ADV_DEBUG=y/# CONFIG_VIDEO_ADV_DEBUG is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_IOMMU_DEBUG=y/# CONFIG_IOMMU_DEBUG is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_MSM_DEBUGCC_KONA=y/# CONFIG_MSM_DEBUGCC_KONA is not set/' "$DEFCONFIG"
+        sed -i 's/CONFIG_NETFILTER_XT_TARGET_TRACE=y/# CONFIG_NETFILTER_XT_TARGET_TRACE is not set/' "$DEFCONFIG"
+        
+        echo "=== 4. 内存优化: KSM + 透明大页 + ZRAM回写 ==="
+        echo "CONFIG_KSM=y" >> "$DEFCONFIG"
+        echo "CONFIG_TRANSPARENT_HUGEPAGE=y" >> "$DEFCONFIG"
+        echo "CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y" >> "$DEFCONFIG"
+        echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
+        
+        echo "=== 5. IO 优化: 启用 deadline 调度器（UFS存储） ==="
+        echo "CONFIG_MQ_IOSCHED_DEADLINE=y" >> "$DEFCONFIG"
+        
+        echo "=== 优化配置完成，验证关键项 ==="
+        grep -E "LTO|KSM|TRANSPARENT_HUGEPAGE|ZRAM_WRITEBACK|MQ_IOSCHED_DEADLINE|CC_OPTIMIZE_FOR_PERFORMANCE" "$DEFCONFIG" | grep -v "^#"
 
     - name: 设置ccache缓存
       if: env.ENABLE_CCACHE == 'true'
