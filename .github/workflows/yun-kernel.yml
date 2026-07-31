@@ -2,14 +2,14 @@ name: build
 on:
   watch:
     types: [started]
-
+  workflow_dispatch:
   workflow_call:
 
 jobs:
   build:
     name: Build Kernel by ${{ github.actor }}
-    runs-on: ubuntu-latest
-    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'workflow_dispatch' || github.event.repository.owner.id == github.event.sender.id
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
@@ -17,23 +17,19 @@ jobs:
       
     steps:
     - name: Checkout 源码
-      uses: actions/checkout@v3
-      
-    - name: 安装 Python 2.7
-      uses: LizardByte/setup-python-action@master
-      with:
-        python-version: '2.7'
+      uses: actions/checkout@v4
       
     - name: Debug 当前目录和文件
       run: |
         pwd
         ls -al
-        cat ./config.env  # 确认存在
+        cat ./config.env
+
     - name: 工作配置
       shell: bash
       working-directory: ${{ github.workspace }}
       run: |
-        cat ./config.env  # 确认存在
+        cat ./config.env
         echo "LXC_DOCKER=$(cat config.env | grep -w "LXC_DOCKER" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "METHOD_OK=$(cat config.env | grep -w "METHOD_OK" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "ENABLE_KVM=$(cat config.env | grep -w "ENABLE_KVM" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
@@ -68,7 +64,6 @@ jobs:
         echo "BUILD_BOOT_IMG=$(cat config.env | grep -w "BUILD_BOOT_IMG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "SOURCE_BOOT_IMAGE=$(cat config.env | grep -w "SOURCE_BOOT_IMAGE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
 
-
     - name: 大容量空间支持
       uses: easimon/maximize-build-space@master
       with:
@@ -79,26 +74,14 @@ jobs:
           remove-haskell: 'true'
           remove-codeql: 'true'
 
-          
-    - uses: actions/checkout@v3
-      with:
-          path: KernelSU
-          fetch-depth: 0
-
     - name: 构建编译内核环境
       run: |
         echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
         echo "DEVICE=$(echo ${{ env.KERNEL_CONFIG }} | sed 's!vendor/!!;s/_defconfig//;s/_user//;s/-perf//')" >> $GITHUB_ENV
         sudo apt-get update
-        sudo apt-get install binutils binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python3
+        sudo apt-get install -y binutils binutils-aarch64-linux-gnu binutils-arm-linux-gnueabi git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python3
         mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
-    - name: 切换python2.7
-      if: env.CUT_PYTHON == 'true'
-      run: |
-       sudo rm /bin/python
-       sudo ln -s /bin/python2.7 /bin/python
-      
     - name: 下载Clang-aosp编译器
       if: env.USE_CUSTOM_CLANG == 'false'
       run: |
@@ -135,7 +118,6 @@ jobs:
             tar -C gcc-64/ -zxvf gcc-aarch64.tar.gz
             echo "GCC_64=CROSS_COMPILE=$GITHUB_WORKSPACE/kernel_workspace/gcc-64/bin/aarch64-linux-android-" >> $GITHUB_ENV
         fi
-
         if [ ${{ env.METHOD_OK }} = A ]; then
             mkdir gcc-32
             wget -O gcc-arm.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-12.1.0_r27.tar.gz
@@ -149,9 +131,7 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace
         git clone https://android.googlesource.com/platform/system/tools/mkbootimg tools -b master-kernel-build-2022 --depth=1
 
-
     - name: 下载直链内核镜像
-
       if: env.BUILD_BOOT_IMG == 'true'
       run: |
        cd $GITHUB_WORKSPACE/kernel_workspace
@@ -177,7 +157,6 @@ jobs:
          echo "CONFIG_VHOST_NET=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
          echo "CONFIG_VHOST_CROSS_ENDIAN_LEGACY=y" >> android-kernel/arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
          
-         
     - name: 开启lxc和docker配置
       if: env.LXC_DOCKER == 'true'
       run: |
@@ -186,7 +165,6 @@ jobs:
         chmod 777 LXC-DOCKER-OPEN-CONFIG.sh
         ./LXC-DOCKER-OPEN-CONFIG.sh android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }} -w
 
-      
     - name: 打入lxc补丁
       if: env.LXC_PATCH == 'true'
       run: |
@@ -196,11 +174,9 @@ jobs:
        if [ -f android-kernel/kernel/cgroup.c ]; then
        ./runcpatch.sh android-kernel/kernel/cgroup.c               
        fi
-       
        if [ -f android-kernel/kernel/cgroup/cgroup.c ]; then
        ./runcpatch.sh android-kernel/kernel/cgroup/cgroup.c               
        fi
-       
        if [ -f android-kernel/net/netfilter/xt_qtaguid.c ]; then
          wget https://github.com/wu17481748/lxc-docker/releases/download/lxc/lxc.patch
          patch -p0 < lxc.patch
@@ -212,26 +188,19 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace
         sed -i '/CONFIG_ANDROID_PARANOID_NETWORK/d' android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
         echo "# CONFIG_ANDROID_PARANOID_NETWORK is not set" >> android-kernel/arch/arm64/configs/${{ env.KERNEL_CONFIG }}
-        
-        
-  
+
     - name: 开启KSU
       if: env.ENABLE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         rm -rf KernelSU
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s ${{ env.KERNELSU_TAG }}
-        # ksu
-        #curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
-        # sukisu 注意无法编译
-        #curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s v3.1
         echo "UPLOADNAME=-KernelSU" >> $GITHUB_ENV
 
     - name: 开启KSU补充内核配置
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         if [ ${{ env.ADD_KPROBES_CONFIG }} = true ]; then
-
             echo "CONFIG_MODULES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
             echo "CONFIG_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
             echo "CONFIG_HAVE_KPROBES=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
@@ -249,29 +218,32 @@ jobs:
         if [ ${{ env.DISABLE_CC_WERROR }} = true ]; then
             echo "CONFIG_CC_WERROR=n" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
         fi
-        # 显式添加 CONFIG_KSU=y（crDroid 内核已集成 KSU 源码，无需 setup.sh）
+        # crDroid 内核已集成 KSU 源码，显式添加 CONFIG_KSU=y
         echo "CONFIG_KSU=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
-        # 确保依赖项已启用
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
+        # 显式确认 EROFS 支持（crDroid defconfig 已自带，此处做双保险）
+        echo "CONFIG_EROFS_FS=y" >> arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}
 
     - name: 修复KSU hook变量缺失
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        # crDroid ksud.c 中 ksu_vfs_read_hook/ksu_execveat_hook/ksu_input_hook
-        # 定义在 #else 块(即非 CONFIG_KPROBES)。当 CONFIG_KPROBES=y 时不定义，
-        # 但 fs/read_write.c 等在 #ifdef CONFIG_KSU 下仍引用，导致链接错误。
-        # 解决: 创建 hook_compat.c 在 CONFIG_KPROBES 时提供变量定义。
-        printf '%s\n' \
-          '#include <linux/types.h>' \
-          '#include <linux/cache.h>' \
-          '#ifdef CONFIG_KPROBES' \
-          'bool ksu_vfs_read_hook __read_mostly = false;' \
-          'bool ksu_execveat_hook __read_mostly = false;' \
-          'bool ksu_input_hook __read_mostly = false;' \
-          '#endif' > drivers/kernelsu/hook_compat.c
-        sed -i '/^kernelsu-objs += kernel_compat.o/a kernelsu-objs += hook_compat.o' drivers/kernelsu/Makefile
-        echo "=== hook_compat.c ===" && cat drivers/kernelsu/hook_compat.c
-        echo "=== Makefile ===" && grep "hook_compat" drivers/kernelsu/Makefile
+        if [ -d drivers/kernelsu ]; then
+          printf '%s\n' \
+            '#include <linux/types.h>' \
+            '#include <linux/cache.h>' \
+            '#ifdef CONFIG_KPROBES' \
+            'bool ksu_vfs_read_hook __read_mostly = false;' \
+            'bool ksu_execveat_hook __read_mostly = false;' \
+            'bool ksu_input_hook __read_mostly = false;' \
+            '#endif' > drivers/kernelsu/hook_compat.c
+          if grep -q "kernel_compat.o" drivers/kernelsu/Makefile; then
+            sed -i '/^kernelsu-objs += kernel_compat.o/a kernelsu-objs += hook_compat.o' drivers/kernelsu/Makefile
+          fi
+          echo "=== hook_compat.c ===" && cat drivers/kernelsu/hook_compat.c
+          echo "=== Makefile ===" && grep "hook_compat" drivers/kernelsu/Makefile || true
+        else
+          echo "drivers/kernelsu not found, skipping hook fix"
+        fi
 
     - name: 性能优化配置
       if: env.ENABLE_PERF_OPT == 'true'
@@ -280,12 +252,10 @@ jobs:
         DEFCONFIG="arch/${{ env.ARCH }}/configs/${{ env.KERNEL_CONFIG }}"
         
         echo "=== 1. 启用 ThinLTO 跨模块优化 ==="
-        # 先移除可能存在的 LTO 禁用项
         sed -i '/CONFIG_LTO_NONE/d' "$DEFCONFIG"
         sed -i 's/CONFIG_LTO=n/# CONFIG_LTO is not set/' "$DEFCONFIG"
         sed -i 's/CONFIG_LTO_CLANG=n/# CONFIG_LTO_CLANG is not set/' "$DEFCONFIG"
         sed -i 's/CONFIG_THINLTO=n/# CONFIG_THINLTO is not set/' "$DEFCONFIG"
-        # 启用 ThinLTO
         echo "CONFIG_LTO=y" >> "$DEFCONFIG"
         echo "CONFIG_LTO_CLANG=y" >> "$DEFCONFIG"
         echo "CONFIG_THINLTO=y" >> "$DEFCONFIG"
@@ -294,7 +264,7 @@ jobs:
         sed -i 's/CONFIG_CC_OPTIMIZE_FOR_SIZE=y/# CONFIG_CC_OPTIMIZE_FOR_SIZE is not set/' "$DEFCONFIG"
         echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> "$DEFCONFIG"
         
-        echo "=== 3. 关闭调试选项（减少开销和体积） ==="
+        echo "=== 3. 关闭调试选项 ==="
         sed -i 's/CONFIG_DEBUG_INFO=y/# CONFIG_DEBUG_INFO is not set/' "$DEFCONFIG"
         sed -i 's/CONFIG_DEBUG_LIST=y/# CONFIG_DEBUG_LIST is not set/' "$DEFCONFIG"
         sed -i 's/CONFIG_DEBUG_ALIGN_RODATA=y/# CONFIG_DEBUG_ALIGN_RODATA is not set/' "$DEFCONFIG"
@@ -308,11 +278,11 @@ jobs:
         echo "CONFIG_KSM=y" >> "$DEFCONFIG"
         echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
         
-        echo "=== 5. IO 优化: 启用 deadline 调度器（UFS存储） ==="
+        echo "=== 5. IO 优化: 启用 deadline 调度器 ==="
         echo "CONFIG_MQ_IOSCHED_DEADLINE=y" >> "$DEFCONFIG"
         
-        echo "=== 优化配置完成，验证关键项 ==="
-        grep -E "LTO|KSM|TRANSPARENT_HUGEPAGE|ZRAM_WRITEBACK|MQ_IOSCHED_DEADLINE|CC_OPTIMIZE_FOR_PERFORMANCE" "$DEFCONFIG" | grep -v "^#"
+        echo "=== 优化配置完成 ==="
+        grep -E "LTO|KSM|ZRAM_WRITEBACK|MQ_IOSCHED_DEADLINE|CC_OPTIMIZE_FOR_PERFORMANCE|EROFS" "$DEFCONFIG" | grep -v "^#"
 
     - name: 设置ccache缓存
       if: env.ENABLE_CCACHE == 'true'
@@ -330,19 +300,18 @@ jobs:
         
         if [ ${{ env.METHOD_OK }} = A ]; then
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} ${{ env.KERNEL_CONFIG }}
-            # 强制启用 CONFIG_KSU 和 OVERLAY_FS（crDroid 内核已集成 KSU 源码）
             ./scripts/config --file out/.config --enable OVERLAY_FS
             ./scripts/config --file out/.config --enable KSU
+            ./scripts/config --file out/.config --enable EROFS_FS
             make CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }} olddefconfig
-            # 验证 CONFIG_KSU 是否已启用
             grep "CONFIG_KSU" out/.config || echo "WARNING: CONFIG_KSU not found in .config!"
+            grep "CONFIG_EROFS_FS" out/.config || echo "WARNING: CONFIG_EROFS_FS not found in .config!"
             if [ ${{ env.ENABLE_CCACHE }} = true ]; then
             make -j$(nproc --all) CC="ccache clang" O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
             else
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} ${{ env.GCC_64 }} ${{ env.GCC_32 }}
             fi
         fi
-        
         
         if [ ${{ env.METHOD_OK }} = B ]; then
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} ${{ env.EXTRA_CMDS }} CROSS_COMPILE="aarch64-linux-gnu-" CROSS_COMPILE_ARM32="arm-linux-gnueabi-" ${{ env.KERNEL_CONFIG }}
@@ -352,14 +321,10 @@ jobs:
             make -j$(nproc --all) CC=clang O=out ARCH=${{ env.ARCH }} ${{ env.CUSTOM_CMDS }} CROSS_COMPILE="aarch64-linux-gnu-" CROSS_COMPILE_ARM32="arm-linux-gnueabi-" ${{ env.EXTRA_CMDS }} ${{ env.EXTRA_CMDT }} ${{ env.EXTRA_CMDU }}
             fi
         fi
-        
-        
-  
-        
+
     - name: 检查编译内核生成文件
       run: |
        cd $GITHUB_WORKSPACE/kernel_workspace
-       # if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }} ]; then
        if [ -f android-kernel/out/arch/${{ env.ARCH }}/boot/Image ]; then
            echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
        else
@@ -374,7 +339,7 @@ jobs:
                exit 1
            fi
        fi
-  
+
     - name: 制作Anykernel3卡刷包
       if: env.CHECK_FILE_IS_OK == 'true'
       run: |
@@ -402,15 +367,15 @@ jobs:
             echo "Boot image is empty"
             exit 1
         fi
-    
-    - name: 上传Upload Image or Image.gz-dtb
+
+    - name: 上传 Image
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.KERNEL_IMAGE_NAME }}${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
         path: kernel_workspace/android-kernel/out/arch/${{ env.ARCH }}/boot/${{ env.KERNEL_IMAGE_NAME }}
 
-    - name: 上传Upload AnyKernel3
+    - name: 上传 AnyKernel3
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
       with:
