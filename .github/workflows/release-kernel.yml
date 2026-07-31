@@ -1,0 +1,53 @@
+name: Release Kernel
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Download boot.img
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 29718446841
+          name: boot-thyme-202607201311
+          path: artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download dtbo.img
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 29718446841
+          name: dtbo-thyme-202607201311
+          path: artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Download AnyKernel3
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 29718446841
+          name: AnyKernel3-thyme-202607201311
+          path: artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Display downloaded files
+        run: ls -la artifacts/
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          tag_name: kernel-thyme-v1
+          name: Thyme Kernel EROFS+KernelSU
+          body: |
+            Compiled kernel for Xiaomi 10s (thyme)
+            - EROFS support
+            - KernelSU integrated
+            - Based on crDroid 14.0 kernel
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
