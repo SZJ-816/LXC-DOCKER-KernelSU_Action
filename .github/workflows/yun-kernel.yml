@@ -4,12 +4,14 @@ on:
     types: [started]
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: [main]
 
 jobs:
   build:
     name: Build Kernel by ${{ github.actor }}
     runs-on: ubuntu-22.04
-    if: github.event_name == 'workflow_dispatch' || github.event.repository.owner.id == github.event.sender.id
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.repository.owner.id == github.event.sender.id
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
